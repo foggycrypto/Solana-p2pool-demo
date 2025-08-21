@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ada 的 Solana 無損彩票模擬 (PoolTogether-like)</title>
+    <title>Ada 的 Solana 無損彩票模擬 (Power 2 Demo)</title>
     <!-- 引入 Tailwind CSS 用於美觀和響應式設計 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -23,7 +23,7 @@
     <!-- 主容器，置中並帶有陰影和圓角 -->
     <div class="bg-white rounded-xl shadow-lg p-6 md:p-8 w-full max-w-md">
         <!-- 應用程式標題 -->
-        <h1 class="text-3xl font-bold text-center text-gradient mb-6">Solana 無損彩票模擬</h1>
+        <h1 class="text-3xl font-bold text-center text-gradient mb-6">Power 2 Demo</h1>
 
         <!-- 連接錢包區塊 -->
         <div class="mb-6 text-center">
@@ -44,7 +44,7 @@
             <div class="bg-emerald-50 p-4 rounded-lg shadow-sm">
                 <h2 class="text-xl font-semibold text-emerald-700 mb-2">我的存款 (模擬)</h2>
                 <p class="text-3xl font-extrabold text-emerald-900" id="myDeposits">0.0000 SOL</p>
-                <p class="text-500 text-sm mt-1">已存入無損彩票池</p>
+                <p class="text-gray-500 text-sm mt-1">已存入無損彩票池</p>
             </div>
         </div>
 
@@ -77,6 +77,13 @@
                     </button>
                 </div>
             </div>
+        </div>
+
+        <!-- 累積獎勵區塊 -->
+        <div class="bg-yellow-50 p-4 rounded-lg mb-4 shadow-sm mt-6">
+            <h2 class="text-xl font-semibold text-yellow-700 mb-2">我獲得的獎勵 (模擬)</h2>
+            <p class="text-3xl font-extrabold text-yellow-900" id="myAccumulatedRewards">0.0000 SOL</p>
+            <p class="text-gray-500 text-sm mt-1">每次中獎會累積</p>
         </div>
 
         <!-- 領取獎勵區塊 -->
@@ -121,6 +128,7 @@
         const depositButton = document.getElementById('depositButton'); // 存入按鈕
         const withdrawAmountInput = document.getElementById('withdrawAmount'); // 提領金額輸入
         const withdrawButton = document.getElementById('withdrawButton'); // 提領按鈕
+        const myAccumulatedRewardsElement = document.getElementById('myAccumulatedRewards'); // 新增：我的累積獎勵顯示元素
         const prizeMessageElement = document.getElementById('prizeMessage'); // 中獎訊息
         const claimPrizeButton = document.getElementById('claimPrizeButton'); // 領取獎勵按鈕
         const messageElement = document.getElementById('message');
@@ -131,6 +139,7 @@
         let currentAvailableSolBalance = 0; // 錢包中可用的 SOL 餘額 (來自 Devnet)
         let mySimulatedDeposits = 0; // 用戶在獎池中的模擬存款
         let simulatedPrizePoolAmount = 5.0; // 模擬的獎池總額，初始值 5 SOL
+        let myAccumulatedRewards = 0; // 新增：用戶累積的獎勵金額 (模擬)
         const WINNING_PRIZE_AMOUNT = 0.5; // 每次中獎獎金 (模擬)
         const DRAW_INTERVAL_SECONDS = 60; // 每 60 秒開獎一次 (模擬)
         let nextDrawTime = Date.now() + DRAW_INTERVAL_SECONDS * 1000; // 下次開獎時間
@@ -175,12 +184,14 @@
             // 更新獎池總額
             prizePoolElement.textContent = simulatedPrizePoolAmount.toFixed(2) + ' SOL';
 
+            // 更新我的累積獎勵
+            myAccumulatedRewardsElement.textContent = myAccumulatedRewards.toFixed(4) + ' SOL';
+
             // 更新領取獎勵按鈕狀態 (基於是否中獎及是否已連接錢包)
-            if (userHasWon && walletPublicKey) { // 只有中獎且已連接時才啟用
-                prizeMessageElement.classList.remove('hidden');
+            // 只有當用戶有累積獎勵且已連接錢包時才啟用領取按鈕
+            if (myAccumulatedRewards > 0 && walletPublicKey) {
                 claimPrizeButton.disabled = false;
             } else {
-                prizeMessageElement.classList.add('hidden');
                 claimPrizeButton.disabled = true;
             }
 
@@ -215,13 +226,16 @@
             showMessage('正在進行開獎...', 'text-gray-600');
             // 模擬中獎邏輯：如果用戶有存款，則有 20% 的機率中獎
             if (mySimulatedDeposits > 0 && Math.random() < 0.2) {
-                userHasWon = true;
-                showMessage('恭喜！您中獎了！請領取您的獎勵。', 'text-green-600');
+                userHasWon = true; // 設置中獎標誌
+                myAccumulatedRewards += WINNING_PRIZE_AMOUNT; // 將獎金累積到用戶獎勵
+                showMessage('恭喜！您中獎了！獎勵已累積到您的帳戶。', 'text-green-600');
             } else {
-                userHasWon = false;
+                userHasWon = false; // 重置中獎標誌
                 showMessage('本次您未中獎。下次開獎見！', 'text-gray-600');
             }
-            updateUI(); // 更新 UI 以顯示中獎狀態
+            // 無論是否中獎，獎勵訊息都先隱藏，直到用戶有累積獎勵才顯示領取按鈕
+            prizeMessageElement.classList.add('hidden');
+            updateUI(); // 更新 UI 以顯示中獎狀態和累積獎勵
         }
 
         // 函數：檢查 Phantom 錢包是否可用
@@ -310,6 +324,7 @@
                     clearInterval(drawIntervalId); // 停止倒數
                     drawIntervalId = null;
                     mySimulatedDeposits = 0; // 重置存款
+                    myAccumulatedRewards = 0; // 重置累積獎勵
                     userHasWon = false; // 重置中獎狀態
                     updateUI(); // 清空所有餘額和狀態
                     connectWalletButton.disabled = false;
@@ -381,7 +396,7 @@
 
         // 點擊「領取獎勵」按鈕 (觸發真實 Phantom 交易，但領取邏輯為本機模擬)
         claimPrizeButton.addEventListener('click', async () => {
-            if (!userHasWon) {
+            if (myAccumulatedRewards <= 0) { // 檢查是否有累積獎勵可領取
                 showMessage('目前沒有可領取的獎勵。', 'text-red-600');
                 return;
             }
@@ -391,9 +406,10 @@
 
             const success = await performDummyTransaction('領取獎勵');
             if (success) {
-                // 模擬將獎金加入可用餘額
-                currentAvailableSolBalance += WINNING_PRIZE_AMOUNT; // 雖然這裡從 Devnet 刷新了，但這是模擬的獎金增加
-                simulatedPrizePoolAmount -= WINNING_PRIZE_AMOUNT; // 獎池減少
+                // 模擬將累積獎金加入可用餘額
+                currentAvailableSolBalance += myAccumulatedRewards; // 將所有累積獎勵加回可用餘額
+                simulatedPrizePoolAmount -= myAccumulatedRewards; // 獎池減少相應金額 (模擬)
+                myAccumulatedRewards = 0; // 清空累積獎勵
                 userHasWon = false; // 重置中獎狀態
 
                 updateUI();
