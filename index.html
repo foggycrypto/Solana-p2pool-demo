@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ada 的 Solana 無損彩票模擬 (PoolTogether-like)</title>
+    <!-- 引入 Tailwind CSS 用於美觀和響應式設計 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 設定全域字體為 Inter */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5; /* 輕微的背景色 */
+        }
+        .text-gradient {
+            background-image: linear-gradient(to right, #6366f1, #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+    <!-- 主容器，置中並帶有陰影和圓角 -->
+    <div class="bg-white rounded-xl shadow-lg p-6 md:p-8 w-full max-w-md">
+        <!-- 應用程式標題 -->
+        <h1 class="text-3xl font-bold text-center text-gradient mb-6">Solana 無損彩票模擬</h1>
+
+        <!-- 連接錢包區塊 -->
+        <div class="mb-6 text-center">
+            <button id="connectWalletButton" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-150 ease-in-out shadow-md">
+                連接 Phantom 錢包
+            </button>
+            <p id="walletStatus" class="mt-3 text-sm text-gray-600"></p>
+            <p id="walletAddress" class="mt-1 text-sm text-gray-800 font-mono break-all"></p>
+        </div>
+
+        <!-- 餘額概覽區塊 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div class="bg-indigo-50 p-4 rounded-lg shadow-sm">
+                <h2 class="text-xl font-semibold text-indigo-700 mb-2">錢包可用 SOL</h2>
+                <p class="text-3xl font-extrabold text-indigo-900" id="solBalance">0.0000 SOL</p>
+                <p class="text-gray-500 text-sm mt-1">來自 Solana Devnet</p>
+            </div>
+            <div class="bg-emerald-50 p-4 rounded-lg shadow-sm">
+                <h2 class="text-xl font-semibold text-emerald-700 mb-2">我的存款 (模擬)</h2>
+                <p class="text-3xl font-extrabold text-emerald-900" id="myDeposits">0.0000 SOL</p>
+                <p class="text-gray-500 text-sm mt-1">已存入無損彩票池</p>
+            </div>
+        </div>
+
+        <!-- 獎池資訊與開獎倒數 -->
+        <div class="bg-purple-50 p-4 rounded-lg mb-6 shadow-sm text-center">
+            <h2 class="text-2xl font-bold text-purple-700 mb-2">當前獎池總額 (模擬)</h2>
+            <p class="text-5xl font-extrabold text-purple-900 mb-4" id="prizePool">0.00 SOL</p>
+            <h3 class="text-xl font-semibold text-purple-600 mb-2">距離下次開獎</h3>
+            <p class="text-3xl font-bold text-purple-800" id="countdown">--:--</p>
+        </div>
+
+        <!-- 存入與提領操作區塊 -->
+        <div class="border-t border-gray-200 pt-6 mt-6">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">存入與提領 SOL</h2>
+            <div class="space-y-4">
+                <!-- 存入 SOL -->
+                <div class="flex flex-col md:flex-row gap-2">
+                    <input type="number" id="depositAmount" placeholder="存入金額 (SOL)" step="0.000000001" min="0.000000001"
+                           class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out">
+                    <button id="depositButton" class="w-full md:w-auto bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-150 ease-in-out shadow-md" disabled>
+                        存入
+                    </button>
+                </div>
+                <!-- 提領 SOL -->
+                <div class="flex flex-col md:flex-row gap-2">
+                    <input type="number" id="withdrawAmount" placeholder="提領金額 (SOL)" step="0.000000001" min="0.000000001"
+                           class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-red-500 focus:border-red-500 transition duration-150 ease-in-out">
+                    <button id="withdrawButton" class="w-full md:w-auto bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition duration-150 ease-in-out shadow-md" disabled>
+                        提領
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 領取獎勵區塊 -->
+        <div class="border-t border-gray-200 pt-6 mt-6 text-center">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">領取我的獎勵</h2>
+            <p id="prizeMessage" class="text-lg text-orange-600 font-bold mb-4 hidden">🎉 恭喜您中獎了！</p>
+            <button id="claimPrizeButton" class="w-full bg-orange-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 transition duration-150 ease-in-out shadow-md" disabled>
+                領取獎勵
+            </button>
+        </div>
+
+        <!-- 訊息顯示區塊（成功/失敗/提示） -->
+        <p id="message" class="mt-4 text-center text-sm font-medium"></p>
+
+        <!-- 應用程式免責聲明 -->
+        <p class="text-xs text-gray-400 text-center mt-6">
+            此應用程式連接到 Solana Devnet。請確保您的 Phantom 錢包已安裝並設置為 Devnet。<br>
+            **獎池、存款和中獎邏輯為前端模擬，相關操作會觸發真實的 Phantom 交易（極小金額轉帳給自己）來模擬鏈上互動。**
+        </p>
+    </div>
+
+    <!-- 引入 Solana Web3.js 函式庫 -->
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+
+    <script>
+        // 確保 Solana Web3.js 函式庫已載入
+        const { Connection, PublicKey, Transaction, SystemProgram } = solanaWeb3;
+
+        // 設定 Solana 網路 (Devnet 是開發測試網路)
+        const network = solanaWeb3.clusterApiUrl('devnet');
+        const connection = new Connection(network, 'confirmed');
+
+        // 獲取 DOM 元素
+        const connectWalletButton = document.getElementById('connectWalletButton');
+        const walletStatusElement = document.getElementById('walletStatus');
+        const walletAddressElement = document.getElementById('walletAddress');
+        const solBalanceElement = document.getElementById('solBalance');
+        const myDepositsElement = document.getElementById('myDeposits'); // 我的存款顯示元素
+        const prizePoolElement = document.getElementById('prizePool'); // 獎池顯示元素
+        const countdownElement = document.getElementById('countdown'); // 倒數計時顯示元素
+        const depositAmountInput = document.getElementById('depositAmount'); // 存入金額輸入
+        const depositButton = document.getElementById('depositButton'); // 存入按鈕
+        const withdrawAmountInput = document.getElementById('withdrawAmount'); // 提領金額輸入
+        const withdrawButton = document.getElementById('withdrawButton'); // 提領按鈕
+        const prizeMessageElement = document.getElementById('prizeMessage'); // 中獎訊息
+        const claimPrizeButton = document.getElementById('claimPrizeButton'); // 領取獎勵按鈕
+        const messageElement = document.getElementById('message');
+
+        // 應用程式狀態變數
+        let provider = null; // Phantom 錢包提供者
+        let walletPublicKey = null; // 連接的錢包公開金鑰
+        let currentAvailableSolBalance = 0; // 錢包中可用的 SOL 餘額 (來自 Devnet)
+        let mySimulatedDeposits = 0; // 用戶在獎池中的模擬存款
+        let simulatedPrizePoolAmount = 5.0; // 模擬的獎池總額，初始值 5 SOL
+        const WINNING_PRIZE_AMOUNT = 0.5; // 每次中獎獎金 (模擬)
+        const DRAW_INTERVAL_SECONDS = 60; // 每 60 秒開獎一次 (模擬)
+        let nextDrawTime = Date.now() + DRAW_INTERVAL_SECONDS * 1000; // 下次開獎時間
+        let drawIntervalId = null; // 倒數計時器 ID
+        let userHasWon = false; // 用戶是否中獎 (模擬)
+
+        // 函數：顯示訊息
+        function showMessage(msg, colorClass) {
+            messageElement.textContent = msg;
+            messageElement.className = `mt-4 text-center text-sm font-medium ${colorClass}`;
+        }
+
+        // 函數：更新所有 UI 元素
+        async function updateUI() {
+            // 更新可用 SOL 餘額
+            if (walletPublicKey) {
+                try {
+                    const balanceLamports = await connection.getBalance(walletPublicKey);
+                    currentAvailableSolBalance = balanceLamports / solanaWeb3.LAMPORTS_PER_SOL;
+                    solBalanceElement.textContent = currentAvailableSolBalance.toFixed(4) + ' SOL';
+                } catch (error) {
+                    console.error('獲取可用餘額失敗:', error);
+                    solBalanceElement.textContent = '錯誤';
+                    currentAvailableSolBalance = 0;
+                }
+            } else {
+                solBalanceElement.textContent = '0.0000 SOL';
+                currentAvailableSolBalance = 0;
+            }
+
+            // 更新我的存款
+            myDepositsElement.textContent = mySimulatedDeposits.toFixed(4) + ' SOL';
+
+            // 更新獎池總額
+            prizePoolElement.textContent = simulatedPrizePoolAmount.toFixed(2) + ' SOL';
+
+            // 更新領取獎勵按鈕狀態
+            if (userHasWon) {
+                prizeMessageElement.classList.remove('hidden');
+                claimPrizeButton.disabled = false;
+            } else {
+                prizeMessageElement.classList.add('hidden');
+                claimPrizeButton.disabled = true;
+            }
+
+            // 根據連接狀態啟用/禁用操作按鈕
+            const isConnected = walletPublicKey !== null;
+            depositButton.disabled = !isConnected;
+            withdrawButton.disabled = !isConnected;
+            // 發送按鈕的狀態根據連接狀態和是否有有效的收款人/金額決定
+            // 這裡簡化，也跟隨isConnected
+            document.getElementById('sendButton').disabled = !isConnected;
+        }
+
+        // 函數：更新開獎倒數計時
+        function updateCountdown() {
+            const now = Date.now();
+            const timeLeft = nextDrawTime - now;
+
+            if (timeLeft <= 0) {
+                countdownElement.textContent = '正在開獎...';
+                clearInterval(drawIntervalId); // 停止倒數
+                performPrizeDraw(); // 執行開獎邏輯
+                nextDrawTime = now + DRAW_INTERVAL_SECONDS * 1000; // 重置下次開獎時間
+                drawIntervalId = setInterval(updateCountdown, 1000); // 重新啟動倒數
+            } else {
+                const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+                countdownElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }
+        }
+
+        // 函數：執行模擬開獎邏輯
+        function performPrizeDraw() {
+            showMessage('正在進行開獎...', 'text-gray-600');
+            // 模擬中獎邏輯：如果用戶有存款，則有 20% 的機率中獎
+            if (mySimulatedDeposits > 0 && Math.random() < 0.2) {
+                userHasWon = true;
+                showMessage('恭喜！您中獎了！請領取您的獎勵。', 'text-green-600');
+            } else {
+                userHasWon = false;
+                showMessage('本次您未中獎。下次開獎見！', 'text-gray-600');
+            }
+            updateUI(); // 更新 UI 以顯示中獎狀態
+        }
+
+        // 函數：檢查 Phantom 錢包是否可用
+        function getProvider() {
+            if ('solana' in window) {
+                const solanaWindow = window.solana;
+                if (solanaWindow.isPhantom) {
+                    return solanaWindow;
+                }
+            }
+            window.open('https://phantom.app/', '_blank');
+            return null;
+        }
+
+        // 函數：執行鏈上 dummy 交易 (模擬互動)
+        async function performDummyTransaction(actionName) {
+            if (!walletPublicKey) {
+                showMessage('請先連接錢包。', 'text-red-600');
+                return false;
+            }
+            // 發送一個極小金額 (1 Lamport) 的轉帳給自己，以觸發 Phantom 簽名
+            const dummyLamports = 1;
+            try {
+                const transaction = new Transaction().add(
+                    SystemProgram.transfer({
+                        fromPubkey: walletPublicKey,
+                        toPubkey: walletPublicKey, // 轉帳給自己
+                        lamports: dummyLamports,
+                    })
+                );
+                transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+                transaction.feePayer = walletPublicKey;
+
+                showMessage(`正在等待 Phantom 批准 ${actionName} 交易...`, 'text-gray-600');
+
+                const signedTransaction = await provider.signTransaction(transaction);
+                const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+
+                showMessage(`${actionName} 交易已發送！簽名: ${signature}. 等待確認...`, 'text-blue-600');
+
+                await connection.confirmTransaction(signature);
+                showMessage(`${actionName} 交易成功！簽名: ${signature}.`, 'text-green-600');
+                return true;
+            } catch (error) {
+                console.error(`${actionName} 交易失敗:`, error);
+                if (error.code === 4001) {
+                    showMessage(`用戶拒絕 ${actionName} 交易。`, 'text-red-600');
+                } else if (error.message.includes('insufficient funds')) {
+                    showMessage('可用資金不足以支付交易費。', 'text-red-600');
+                } else {
+                    showMessage(`${actionName} 交易時發生錯誤: ${error.message}`, 'text-red-600');
+                }
+                return false;
+            }
+        }
+
+        // 點擊「連接 Phantom 錢包」按鈕
+        connectWalletButton.addEventListener('click', async () => {
+            provider = getProvider();
+            if (!provider) {
+                showMessage('請安裝 Phantom 錢包。', 'text-red-600');
+                return;
+            }
+
+            try {
+                const resp = await provider.connect();
+                walletPublicKey = resp.publicKey;
+
+                walletStatusElement.textContent = '錢包已連接！';
+                walletStatusElement.className = 'mt-3 text-sm text-green-600';
+                walletAddressElement.textContent = walletPublicKey.toString();
+                connectWalletButton.disabled = true;
+                updateUI(); // 連接成功後立即更新所有 UI 元素
+
+                // 啟動倒數計時器
+                if (!drawIntervalId) {
+                    drawIntervalId = setInterval(updateCountdown, 1000);
+                }
+
+                // 監聽 Phantom 的斷開連接事件
+                provider.on('disconnect', () => {
+                    walletPublicKey = null;
+                    walletAddressElement.textContent = '';
+                    walletStatusElement.textContent = '錢包已斷開連接。';
+                    walletStatusElement.className = 'mt-3 text-sm text-red-600';
+                    clearInterval(drawIntervalId); // 停止倒數
+                    drawIntervalId = null;
+                    mySimulatedDeposits = 0; // 重置存款
+                    userHasWon = false; // 重置中獎狀態
+                    updateUI(); // 清空所有餘額和狀態
+                    connectWalletButton.disabled = false;
+                });
+
+            } catch (err) {
+                console.error('連接錢包失敗:', err);
+                if (err.code === 4001) {
+                    showMessage('用戶拒絕連接錢包。', 'text-red-600');
+                } else {
+                    showMessage('連接錢包時發生錯誤。', 'text-red-600');
+                }
+            }
+        });
+
+        // 點擊「發送 SOL」按鈕 (真實鏈上交易)
+        document.getElementById('sendButton').addEventListener('click', async () => {
+            if (!walletPublicKey) {
+                showMessage('請先連接錢包。', 'text-red-600');
+                return;
+            }
+
+            const recipientAddressStr = document.getElementById('recipientAddress').value.trim();
+            const amountSOL = parseFloat(document.getElementById('amount').value);
+
+            if (!recipientAddressStr) {
+                showMessage('請輸入收款人地址。', 'text-red-600');
+                return;
+            }
+            if (isNaN(amountSOL) || amountSOL <= 0) {
+                showMessage('請輸入有效的金額。', 'text-red-600');
+                return;
+            }
+
+            try {
+                const recipientPublicKey = new PublicKey(recipientAddressStr);
+                const amountLamports = amountSOL * solanaWeb3.LAMPORTS_PER_SOL;
+
+                if (currentAvailableSolBalance * solanaWeb3.LAMPORTS_PER_SOL < amountLamports) {
+                    showMessage('錢包可用餘額不足以支付轉帳金額。', 'text-red-600');
+                    return;
+                }
+
+                const transaction = new Transaction().add(
+                    SystemProgram.transfer({
+                        fromPubkey: walletPublicKey,
+                        toPubkey: recipientPublicKey,
+                        lamports: amountLamports,
+                    })
+                );
+
+                transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+                transaction.feePayer = walletPublicKey;
+
+                toggleActionButtons(false);
+                document.getElementById('sendButton').textContent = '交易發送中...';
+                showMessage('正在等待 Phantom 批准發送交易...', 'text-gray-600');
+
+                const signedTransaction = await provider.signTransaction(transaction);
+                const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+
+                showMessage(`發送交易已發送！簽名: ${signature}. 等待確認...`, 'text-blue-600');
+
+                await connection.confirmTransaction(signature);
+
+                showMessage(`發送交易成功！簽名: ${signature}.`, 'text-green-600');
+                document.getElementById('amount').value = '';
+                await updateUI(); // 更新所有 UI 元素
+
+            } catch (error) {
+                console.error('發送交易失敗:', error);
+                if (error.code === 4001) {
+                    showMessage('用戶拒絕交易。', 'text-red-600');
+                } else if (error.message.includes('insufficient funds')) {
+                    showMessage('可用資金不足以完成交易 (包含交易費)。', 'text-red-600');
+                } else {
+                    showMessage(`發送交易時發生錯誤: ${error.message}`, 'text-red-600');
+                }
+            } finally {
+                toggleActionButtons(true);
+                document.getElementById('sendButton').textContent = '發送 SOL';
+            }
+        });
+
+
+        // 點擊「存入」按鈕 (觸發真實 Phantom 交易，但存款邏輯為本機模擬)
+        depositButton.addEventListener('click', async () => {
+            const depositAmount = parseFloat(depositAmountInput.value);
+
+            if (isNaN(depositAmount) || depositAmount <= 0) {
+                showMessage('請輸入有效的存入金額。', 'text-red-600');
+                return;
+            }
+            if (depositAmount > currentAvailableSolBalance) {
+                showMessage('可用餘額不足以存入。', 'text-red-600');
+                return;
+            }
+
+            toggleActionButtons(false);
+            depositButton.textContent = '存入中 (等待批准)...';
+
+            const success = await performDummyTransaction('存入');
+            if (success) {
+                mySimulatedDeposits += depositAmount; // 增加我的存款 (模擬)
+                simulatedPrizePoolAmount += depositAmount; // 增加獎池總額 (模擬)
+                depositAmountInput.value = '';
+                updateUI();
+            }
+            toggleActionButtons(true);
+            depositButton.textContent = '存入';
+        });
+
+        // 點擊「提領」按鈕 (觸發真實 Phantom 交易，但提領邏輯為本機模擬)
+        withdrawButton.addEventListener('click', async () => {
+            const withdrawAmount = parseFloat(withdrawAmountInput.value);
+
+            if (isNaN(withdrawAmount) || withdrawAmount <= 0) {
+                showMessage('請輸入有效的提領金額。', 'text-red-600');
+                return;
+            }
+            if (withdrawAmount > mySimulatedDeposits) {
+                showMessage('我的存款餘額不足以提領。', 'text-red-600');
+                return;
+            }
+
+            toggleActionButtons(false);
+            withdrawButton.textContent = '提領中 (等待批准)...';
+
+            const success = await performDummyTransaction('提領');
+            if (success) {
+                mySimulatedDeposits -= withdrawAmount; // 減少我的存款 (模擬)
+                simulatedPrizePoolAmount -= withdrawAmount; // 減少獎池總額 (模擬)
+                withdrawAmountInput.value = '';
+                updateUI();
+            }
+            toggleActionButtons(true);
+            withdrawButton.textContent = '提領';
+        });
+
+        // 點擊「領取獎勵」按鈕 (觸發真實 Phantom 交易，但領取邏輯為本機模擬)
+        claimPrizeButton.addEventListener('click', async () => {
+            if (!userHasWon) {
+                showMessage('目前沒有可領取的獎勵。', 'text-red-600');
+                return;
+            }
+
+            toggleActionButtons(false);
+            claimPrizeButton.textContent = '領取中 (等待批准)...';
+
+            const success = await performDummyTransaction('領取獎勵');
+            if (success) {
+                // 模擬將獎金加入可用餘額
+                currentAvailableSolBalance += WINNING_PRIZE_AMOUNT; // 雖然這裡從 Devnet 刷新了，但這是模擬的獎金增加
+                simulatedPrizePoolAmount -= WINNING_PRIZE_AMOUNT; // 獎池減少
+                userHasWon = false; // 重置中獎狀態
+
+                updateUI();
+            }
+            toggleActionButtons(true);
+            claimPrizeButton.textContent = '領取獎勵';
+        });
+
+
+        // 應用程式載入完成時，檢查 Phantom 是否存在並設定初始狀態
+        document.addEventListener('DOMContentLoaded', () => {
+            if (getProvider()) {
+                walletStatusElement.textContent = 'Phantom 錢包已安裝。請點擊上方按鈕連接。';
+                walletStatusElement.className = 'mt-3 text-sm text-green-600';
+            } else {
+                walletStatusElement.textContent = '請安裝 Phantom 錢包。';
+                walletStatusElement.className = 'mt-3 text-sm text-red-600';
+                connectWalletButton.disabled = true;
+            }
+            updateUI(); // 初始化所有 UI 元素
+            updateCountdown(); // 啟動第一次倒數顯示
+        });
+    </script>
+</body>
+</html>
