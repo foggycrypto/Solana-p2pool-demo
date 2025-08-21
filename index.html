@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solana no loss lottery demo</title>
+    <title>Ada 的 Solana 無損彩票模擬 (PoolTogether-like)</title>
     <!-- 引入 Tailwind CSS 用於美觀和響應式設計 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -44,7 +44,7 @@
             <div class="bg-emerald-50 p-4 rounded-lg shadow-sm">
                 <h2 class="text-xl font-semibold text-emerald-700 mb-2">我的存款 (模擬)</h2>
                 <p class="text-3xl font-extrabold text-emerald-900" id="myDeposits">0.0000 SOL</p>
-                <p class="text-gray-500 text-sm mt-1">已存入無損彩票池</p>
+                <p class="text-500 text-sm mt-1">已存入無損彩票池</p>
             </div>
         </div>
 
@@ -143,6 +143,14 @@
             messageElement.className = `mt-4 text-center text-sm font-medium ${colorClass}`;
         }
 
+        // 函數：啟用或禁用所有主要操作按鈕 (例如在交易進行中時)
+        function toggleAllActionButtons(enable) {
+            depositButton.disabled = !enable;
+            withdrawButton.disabled = !enable;
+            claimPrizeButton.disabled = !enable; // 確保獎勵按鈕在交易時也被禁用
+            // 發送按鈕已移除，無需在此處控制
+        }
+
         // 函數：更新所有 UI 元素
         async function updateUI() {
             // 更新可用 SOL 餘額
@@ -167,8 +175,8 @@
             // 更新獎池總額
             prizePoolElement.textContent = simulatedPrizePoolAmount.toFixed(2) + ' SOL';
 
-            // 更新領取獎勵按鈕狀態
-            if (userHasWon) {
+            // 更新領取獎勵按鈕狀態 (基於是否中獎及是否已連接錢包)
+            if (userHasWon && walletPublicKey) { // 只有中獎且已連接時才啟用
                 prizeMessageElement.classList.remove('hidden');
                 claimPrizeButton.disabled = false;
             } else {
@@ -176,13 +184,12 @@
                 claimPrizeButton.disabled = true;
             }
 
-            // 根據連接狀態啟用/禁用操作按鈕
+            // 根據連接狀態啟用/禁用存入和提領按鈕
             const isConnected = walletPublicKey !== null;
             depositButton.disabled = !isConnected;
             withdrawButton.disabled = !isConnected;
-            // 發送按鈕的狀態根據連接狀態和是否有有效的收款人/金額決定
-            // 這裡簡化，也跟隨isConnected
-            document.getElementById('sendButton').disabled = !isConnected;
+            // 注意：depositButton 和 withdrawButton 在此處設置為基於連接狀態，
+            // 但在實際交易過程中會被 toggleAllActionButtons 暫時禁用。
         }
 
         // 函數：更新開獎倒數計時
@@ -318,76 +325,6 @@
             }
         });
 
-        // 點擊「發送 SOL」按鈕 (真實鏈上交易)
-        document.getElementById('sendButton').addEventListener('click', async () => {
-            if (!walletPublicKey) {
-                showMessage('請先連接錢包。', 'text-red-600');
-                return;
-            }
-
-            const recipientAddressStr = document.getElementById('recipientAddress').value.trim();
-            const amountSOL = parseFloat(document.getElementById('amount').value);
-
-            if (!recipientAddressStr) {
-                showMessage('請輸入收款人地址。', 'text-red-600');
-                return;
-            }
-            if (isNaN(amountSOL) || amountSOL <= 0) {
-                showMessage('請輸入有效的金額。', 'text-red-600');
-                return;
-            }
-
-            try {
-                const recipientPublicKey = new PublicKey(recipientAddressStr);
-                const amountLamports = amountSOL * solanaWeb3.LAMPORTS_PER_SOL;
-
-                if (currentAvailableSolBalance * solanaWeb3.LAMPORTS_PER_SOL < amountLamports) {
-                    showMessage('錢包可用餘額不足以支付轉帳金額。', 'text-red-600');
-                    return;
-                }
-
-                const transaction = new Transaction().add(
-                    SystemProgram.transfer({
-                        fromPubkey: walletPublicKey,
-                        toPubkey: recipientPublicKey,
-                        lamports: amountLamports,
-                    })
-                );
-
-                transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-                transaction.feePayer = walletPublicKey;
-
-                toggleActionButtons(false);
-                document.getElementById('sendButton').textContent = '交易發送中...';
-                showMessage('正在等待 Phantom 批准發送交易...', 'text-gray-600');
-
-                const signedTransaction = await provider.signTransaction(transaction);
-                const signature = await connection.sendRawTransaction(signedTransaction.serialize());
-
-                showMessage(`發送交易已發送！簽名: ${signature}. 等待確認...`, 'text-blue-600');
-
-                await connection.confirmTransaction(signature);
-
-                showMessage(`發送交易成功！簽名: ${signature}.`, 'text-green-600');
-                document.getElementById('amount').value = '';
-                await updateUI(); // 更新所有 UI 元素
-
-            } catch (error) {
-                console.error('發送交易失敗:', error);
-                if (error.code === 4001) {
-                    showMessage('用戶拒絕交易。', 'text-red-600');
-                } else if (error.message.includes('insufficient funds')) {
-                    showMessage('可用資金不足以完成交易 (包含交易費)。', 'text-red-600');
-                } else {
-                    showMessage(`發送交易時發生錯誤: ${error.message}`, 'text-red-600');
-                }
-            } finally {
-                toggleActionButtons(true);
-                document.getElementById('sendButton').textContent = '發送 SOL';
-            }
-        });
-
-
         // 點擊「存入」按鈕 (觸發真實 Phantom 交易，但存款邏輯為本機模擬)
         depositButton.addEventListener('click', async () => {
             const depositAmount = parseFloat(depositAmountInput.value);
@@ -401,7 +338,7 @@
                 return;
             }
 
-            toggleActionButtons(false);
+            toggleAllActionButtons(false); // 禁用所有主要按鈕
             depositButton.textContent = '存入中 (等待批准)...';
 
             const success = await performDummyTransaction('存入');
@@ -411,7 +348,7 @@
                 depositAmountInput.value = '';
                 updateUI();
             }
-            toggleActionButtons(true);
+            toggleAllActionButtons(true); // 重新啟用所有主要按鈕
             depositButton.textContent = '存入';
         });
 
@@ -428,7 +365,7 @@
                 return;
             }
 
-            toggleActionButtons(false);
+            toggleAllActionButtons(false); // 禁用所有主要按鈕
             withdrawButton.textContent = '提領中 (等待批准)...';
 
             const success = await performDummyTransaction('提領');
@@ -438,7 +375,7 @@
                 withdrawAmountInput.value = '';
                 updateUI();
             }
-            toggleActionButtons(true);
+            toggleAllActionButtons(true); // 重新啟用所有主要按鈕
             withdrawButton.textContent = '提領';
         });
 
@@ -449,7 +386,7 @@
                 return;
             }
 
-            toggleActionButtons(false);
+            toggleAllActionButtons(false); // 禁用所有主要按鈕
             claimPrizeButton.textContent = '領取中 (等待批准)...';
 
             const success = await performDummyTransaction('領取獎勵');
@@ -461,10 +398,9 @@
 
                 updateUI();
             }
-            toggleActionButtons(true);
+            toggleAllActionButtons(true); // 重新啟用所有主要按鈕
             claimPrizeButton.textContent = '領取獎勵';
         });
-
 
         // 應用程式載入完成時，檢查 Phantom 是否存在並設定初始狀態
         document.addEventListener('DOMContentLoaded', () => {
